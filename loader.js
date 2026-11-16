@@ -46,7 +46,7 @@ function updateClip(cx,cz){if(!tileset||!ROADLINES)return;const now=performance.
   runs.forEach(r=>{let m=1e9;for(const q of r.pts)m=Math.min(m,Math.hypot(q[0]-cx,q[1]-cz));r.d=m;});runs.sort((a,b)=>a.d-b.d);
   const polys=[];
   for(const r of runs.slice(0,18)){let p=r.pts;if(p.length>10){const k=Math.ceil(p.length/10);p=p.filter((_,i)=>i%k===0||i===p.length-1);}
-    try{polys.push(new Cesium.ClippingPolygon({positions:corridor(p,r.w).map(([x,z])=>{const [lo,la]=toLL(x,z);return Cesium.Cartesian3.fromDegrees(lo,la);})}));}catch(e){}}
+    try{polys.push(new Cesium.ClippingPolygon({positions:corridor(p,r.w*.7).map(([x,z])=>{const [lo,la]=toLL(x,z);return Cesium.Cartesian3.fromDegrees(lo,la);})}));}catch(e){}}
   try{tileset.clippingPolygons=new Cesium.ClippingPolygonCollection({polygons:polys});}catch(e){console.error('découpage',e);}}
 async function buildRoads(SP){
   const R=750,STEP=5,W={secondary:9,residential:6.5,living_street:5.5,busway:6.5};
@@ -68,7 +68,7 @@ async function buildRoads(SP){
     for(let i=0;i<n;i++){const ref=cwt(ln.pts[i][0],ln.pts[i][1])+dlt(ln.pts[i][0],ln.pts[i][1]);let v=hs&&hs[k+i]!=null?hs[k+i]:ref;if(v>ref+3||v<ref-4)v=ref;h.push(v);}
     k+=n;const hm=h.map(v=>v+.05);
     for(let i=0;i<n;i++)RH.set(Math.round(ln.pts[i][0]/3)+','+Math.round(ln.pts[i][1]/3),hm[i]);
-    const pos=[];const w=ln.w/2+.4;
+    const pos=[];const w=ln.w/2+1.5;
     for(let i=0;i<n;i++){const a=ln.pts[Math.max(0,i-1)],b=ln.pts[Math.min(n-1,i+1)];let dx=b[0]-a[0],dz=b[1]-a[1];const L=Math.hypot(dx,dz)||1;const nx=-dz/L*w,nz=dx/L*w;
       const [x,z]=ln.pts[i];const [lo1,la1]=toLL(x+nx,z+nz),[lo2,la2]=toLL(x-nx,z-nz);
       pos.push(Cesium.Cartesian3.fromDegrees(lo1,la1,hm[i]),Cesium.Cartesian3.fromDegrees(lo2,la2,hm[i]));}
@@ -84,7 +84,7 @@ window.CESIUMGAME.ready=(async()=>{
   const SP={x:297.7,z:287.2};
   if(!OFFLINE){
     loadTxt('Chargement de la ville 3D de Google…');
-    tileset=await Cesium.createGooglePhotorealistic3DTileset(undefined,{maximumScreenSpaceError:24,cacheBytes:1.2e9,maximumCacheOverflowBytes:1.2e9});scene.primitives.add(tileset);
+    tileset=await Cesium.createGooglePhotorealistic3DTileset(undefined,{maximumScreenSpaceError:12,cacheBytes:1.2e9,maximumCacheOverflowBytes:1.2e9});scene.primitives.add(tileset);
     // on regarde le point de départ d'en haut pour charger les tuiles
     const fake={position:{x:SP.x,y:120,z:SP.z},fov:60};const look={x:SP.x,y:0,z:SP.z-.01};
     const t0=performance.now();
