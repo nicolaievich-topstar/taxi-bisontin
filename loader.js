@@ -22,7 +22,8 @@ function rel(x,z){const base=OFFLINE?0:cwt(x,z)+delta-H0;
   for(let a=-2;a<=2;a++)for(let b=-2;b<=2;b++){const v=RH.get((i+a)+','+(j+b));if(v!==undefined){const d=a*a+b*b;if(d<bd){bd=d;best=v;}}}
   return best!==null?best-H0:base;}
 const dirE=new Cesium.Cartesian3(),dest=new Cesium.Cartesian3(),dirF=new Cesium.Cartesian3(),upF=new Cesium.Cartesian3(),rightF=new Cesium.Cartesian3(),tmp=new Cesium.Cartesian3();
-function sync(cam,look){refineRoads(look.x,look.z);
+const LOOK={x:0,z:0};setInterval(()=>refineRoads(LOOK.x,LOOK.z),250);
+function sync(cam,look){LOOK.x=look.x;LOOK.z=look.z;
   const p=cam.position;
   Cesium.Cartesian3.fromElements(look.x-p.x,-(look.z-p.z),look.y-p.y,dirE);Cesium.Cartesian3.normalize(dirE,dirE);
   Cesium.Matrix4.multiplyByPoint(enu,Cesium.Cartesian3.fromElements(p.x,-p.z,p.y+H0,tmp),dest);
@@ -69,11 +70,11 @@ function buildLine(ln){const n=ln.pts.length;const hm=lineHeights(ln);
 let refT=0;
 window.__rd={get lines(){return ROADLINES},get ts(){return tileset},n:0,err:null};
 function refineRoads(cx,cz){try{refineRoads0(cx,cz);}catch(e){__rd.err=String(e&&e.stack||e);}}
-function refineRoads0(cx,cz){if(!ROADLINES||!tileset)return;__rd.n++;const now=performance.now();if(now-refT<250)return;refT=now;
+function refineRoads0(cx,cz){if(!ROADLINES||!tileset)return;__rd.n++;const now=performance.now();refT=now;
   const cand=[];for(const ln of ROADLINES){for(let i=0;i<ln.pts.length;i++){if(ln.ok[i])continue;const d=Math.hypot(ln.pts[i][0]-cx,ln.pts[i][1]-cz);if(d<130)cand.push([d,ln,i]);}}
   if(!cand.length)return;cand.sort((a,b)=>a[0]-b[0]);const touched=new Set();for(const p of ROADPRIMS)p.show=false;
   for(const [d,ln,i] of cand.slice(0,10)){const [lo,la]=toLL(ln.pts[i][0],ln.pts[i][1]);let h;try{h=scene.sampleHeight(Cesium.Cartographic.fromDegrees(lo,la));}catch(e){__rd.err=String(e);}
-    ln.ok[i]=1;if(h!==undefined&&isFinite(h)){const ref=ln.h0[i];if(h>ref-5&&h<ref+6){ln.h[i]=h;touched.add(ln);}}}
+    ln.ok[i]=1;if(h===undefined)__rd.undef=(__rd.undef||0)+1;if(h!==undefined&&isFinite(h)){const ref=ln.h0[i];if(h>ref-5&&h<ref+6){ln.h[i]=h;touched.add(ln);}}}
   for(const p of ROADPRIMS)p.show=true;
   let k=0;for(const ln of touched){if(k++<3)buildLine(ln);else ln.dirty=1;}
   for(const ln of ROADLINES)if(ln.dirty&&k++<3){ln.dirty=0;buildLine(ln);}}
