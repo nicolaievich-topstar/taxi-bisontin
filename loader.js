@@ -22,7 +22,7 @@ function rel(x,z){const base=OFFLINE?0:cwt(x,z)+delta-H0;
   for(let a=-2;a<=2;a++)for(let b=-2;b<=2;b++){const v=RH.get((i+a)+','+(j+b));if(v!==undefined){const d=a*a+b*b;if(d<bd){bd=d;best=v;}}}
   return best!==null?best-H0:base;}
 const dirE=new Cesium.Cartesian3(),dest=new Cesium.Cartesian3(),dirF=new Cesium.Cartesian3(),upF=new Cesium.Cartesian3(),rightF=new Cesium.Cartesian3(),tmp=new Cesium.Cartesian3();
-function sync(cam,look){updateClip(look.x,look.z);
+function sync(cam,look){refineRoads(look.x,look.z);
   const p=cam.position;
   Cesium.Cartesian3.fromElements(look.x-p.x,-(look.z-p.z),look.y-p.y,dirE);Cesium.Cartesian3.normalize(dirE,dirE);
   Cesium.Matrix4.multiplyByPoint(enu,Cesium.Cartesian3.fromElements(p.x,-p.z,p.y+H0,tmp),dest);
@@ -48,37 +48,47 @@ function updateClip(cx,cz){if(!tileset||!ROADLINES)return;const now=performance.
   for(const r of runs.slice(0,18)){let p=r.pts;if(p.length>10){const k=Math.ceil(p.length/10);p=p.filter((_,i)=>i%k===0||i===p.length-1);}
     try{polys.push(new Cesium.ClippingPolygon({positions:corridor(p,r.w*.7).map(([x,z])=>{const [lo,la]=toLL(x,z);return Cesium.Cartesian3.fromDegrees(lo,la);})}));}catch(e){}}
   try{tileset.clippingPolygons=new Cesium.ClippingPolygonCollection({polygons:polys});}catch(e){console.error('découpage',e);}}
+const ROAD_UP=1.4,ROADCOL=Cesium.ColorGeometryInstanceAttribute.fromColor(Cesium.Color.fromCssColorString('#3c3e43'));
+const ROADPRIMS=new Set();
+function lineHeights(ln){const n=ln.pts.length,h=ln.h;const out=new Array(n);
+  for(let i=0;i<n;i++){let m=h[i];for(let k=-2;k<=2;k++){const j=i+k;if(j>=0&&j<n&&ln.ok[j])m=Math.min(m,h[j]);}out[i]=m+ROAD_UP;}return out;}
+function buildLine(ln){const n=ln.pts.length;const hm=lineHeights(ln);
+  for(let i=0;i<n;i++)RH.set(Math.round(ln.pts[i][0]/3)+','+Math.round(ln.pts[i][1]/3),hm[i]);
+  const P=new Float64Array(n*6);const w=ln.w/2;const c=new Cesium.Cartesian3();
+  for(let i=0;i<n;i++){const a=ln.pts[Math.max(0,i-1)],b=ln.pts[Math.min(n-1,i+1)];const dx=b[0]-a[0],dz=b[1]-a[1],L=Math.hypot(dx,dz)||1;const nx=-dz/L*w,nz=dx/L*w;
+    let [x,z]=ln.pts[i];if(i===0){x-=dx/L*w*.6;z-=dz/L*w*.6;}if(i===n-1){x+=dx/L*w*.6;z+=dz/L*w*.6;}
+    const [lo1,la1]=toLL(x+nx,z+nz),[lo2,la2]=toLL(x-nx,z-nz);
+    Cesium.Cartesian3.fromDegrees(lo1,la1,hm[i],undefined,c);P[i*6]=c.x;P[i*6+1]=c.y;P[i*6+2]=c.z;
+    Cesium.Cartesian3.fromDegrees(lo2,la2,hm[i],undefined,c);P[i*6+3]=c.x;P[i*6+4]=c.y;P[i*6+5]=c.z;}
+  const idx=[];for(let i=0;i<n-1;i++){const a=i*2;idx.push(a,a+1,a+2,a+1,a+3,a+2);}
+  const geo=new Cesium.Geometry({attributes:{position:new Cesium.GeometryAttribute({componentDatatype:Cesium.ComponentDatatype.DOUBLE,componentsPerAttribute:3,values:P})},
+    indices:new Uint32Array(idx),primitiveType:Cesium.PrimitiveType.TRIANGLES,boundingSphere:Cesium.BoundingSphere.fromVertices(P)});
+  const prim=new Cesium.Primitive({geometryInstances:new Cesium.GeometryInstance({geometry:geo,attributes:{color:ROADCOL}}),appearance:new Cesium.PerInstanceColorAppearance({flat:true,translucent:false,closed:false}),asynchronous:false});
+  scene.primitives.add(prim);ROADPRIMS.add(prim);
+  if(ln.prim){scene.primitives.remove(ln.prim);ROADPRIMS.delete(ln.prim);}ln.prim=prim;}
+let refT=0;
+function refineRoads(cx,cz){if(!ROADLINES||!tileset)return;const now=performance.now();if(now-refT<250)return;refT=now;
+  const cand=[];for(const ln of ROADLINES){for(let i=0;i<ln.pts.length;i++){if(ln.ok[i])continue;const d=Math.hypot(ln.pts[i][0]-cx,ln.pts[i][1]-cz);if(d<130)cand.push([d,ln,i]);}}
+  if(!cand.length)return;cand.sort((a,b)=>a[0]-b[0]);const touched=new Set();const ex=[...ROADPRIMS];
+  for(const [d,ln,i] of cand.slice(0,10)){const [lo,la]=toLL(ln.pts[i][0],ln.pts[i][1]);let h;try{h=scene.sampleHeight(Cesium.Cartographic.fromDegrees(lo,la),ex);}catch(e){}
+    ln.ok[i]=1;if(h!==undefined&&isFinite(h)){const ref=ln.h0[i];if(h>ref-5&&h<ref+6){ln.h[i]=h;touched.add(ln);}}}
+  let k=0;for(const ln of touched){if(k++<3)buildLine(ln);else ln.dirty=1;}
+  for(const ln of ROADLINES)if(ln.dirty&&k++<3){ln.dirty=0;buildLine(ln);}}
 async function buildRoads(SP){
-  const R=750,STEP=5,W={secondary:9,residential:6.5,living_street:5.5,busway:6.5};
+  const R=750,STEP=5,W={secondary:12,residential:9,living_street:7,busway:8};
   const lines=[];
   for(const r of SCENE.roads){const p=r.p;if(!p.some(([x,z])=>Math.hypot(x-SP.x,z-SP.z)<R))continue;
     const pts=[];for(let i=0;i<p.length-1;i++){const [x1,z1]=p[i],[x2,z2]=p[i+1];const L=Math.hypot(x2-x1,z2-z1);const n=Math.max(1,Math.ceil(L/STEP));
       for(let k=0;k<n;k++)pts.push([x1+(x2-x1)*k/n,z1+(z2-z1)*k/n]);}
-    pts.push(p[p.length-1]);if(pts.length>1)lines.push({w:W[r.k]||6,pts});}
-  const all=[];for(const ln of lines)for(const q of ln.pts){const [lo,la]=toLL(q[0],q[1]);all.push(Cesium.Cartographic.fromDegrees(lo,la));}
-  const hs=null;
+    pts.push(p[p.length-1]);if(pts.length>1)lines.push({w:W[r.k]||7,pts});}
   const CP=[];for(let a=0;a<6;a++)for(let b=0;b<6;b++){const x=SP.x-R+(a+.5)*R/3,z=SP.z-R+(b+.5)*R/3;let best=null,bd=1e9;
     for(const ln of lines)for(const q of ln.pts){const dd=Math.hypot(q[0]-x,q[1]-z);if(dd<bd){bd=dd;best=q;}}if(best&&bd<R/3)CP.push(best);}
   CP.push([SP.x,SP.z]);let corr=[];
   try{const res=await Promise.race([scene.sampleHeightMostDetailed(CP.map(([x,z])=>{const [lo,la]=toLL(x,z);return Cesium.Cartographic.fromDegrees(lo,la);})),new Promise(r=>setTimeout(()=>r(null),20000))]);
     if(res)res.forEach((c,i)=>{if(c&&isFinite(c.height)){const ref=cwt(CP[i][0],CP[i][1]);const dv=c.height-ref;if(dv>-15&&dv<30)corr.push([CP[i][0],CP[i][1],dv]);}});}catch(e){console.warn(e);}
   const dlt=(x,z)=>{if(!corr.length)return delta;let s=0,w=0;for(const [cx,cz,dv] of corr){const q=1/((cx-x)**2+(cz-z)**2+400);s+=dv*q;w+=q;}return s/w;};
-  let k=0;const inst=[];
-  for(const ln of lines){const n=ln.pts.length;const h=[];
-    for(let i=0;i<n;i++){const ref=cwt(ln.pts[i][0],ln.pts[i][1])+dlt(ln.pts[i][0],ln.pts[i][1]);let v=hs&&hs[k+i]!=null?hs[k+i]:ref;if(v>ref+3||v<ref-4)v=ref;h.push(v);}
-    k+=n;const hm=h.map(v=>v+.05);
-    for(let i=0;i<n;i++)RH.set(Math.round(ln.pts[i][0]/3)+','+Math.round(ln.pts[i][1]/3),hm[i]);
-    const pos=[];const w=ln.w/2+1.5;
-    for(let i=0;i<n;i++){const a=ln.pts[Math.max(0,i-1)],b=ln.pts[Math.min(n-1,i+1)];let dx=b[0]-a[0],dz=b[1]-a[1];const L=Math.hypot(dx,dz)||1;const nx=-dz/L*w,nz=dx/L*w;
-      const [x,z]=ln.pts[i];const [lo1,la1]=toLL(x+nx,z+nz),[lo2,la2]=toLL(x-nx,z-nz);
-      pos.push(Cesium.Cartesian3.fromDegrees(lo1,la1,hm[i]),Cesium.Cartesian3.fromDegrees(lo2,la2,hm[i]));}
-    const P=new Float64Array(pos.length*3);pos.forEach((c,i)=>{P[i*3]=c.x;P[i*3+1]=c.y;P[i*3+2]=c.z;});
-    const idx=[];for(let i=0;i<n-1;i++){const a=i*2;idx.push(a,a+1,a+2,a+1,a+3,a+2);}
-    const geo=new Cesium.Geometry({attributes:{position:new Cesium.GeometryAttribute({componentDatatype:Cesium.ComponentDatatype.DOUBLE,componentsPerAttribute:3,values:P})},
-      indices:new Uint32Array(idx),primitiveType:Cesium.PrimitiveType.TRIANGLES,boundingSphere:Cesium.BoundingSphere.fromVertices(P)});
-    inst.push(new Cesium.GeometryInstance({geometry:geo,attributes:{color:Cesium.ColorGeometryInstanceAttribute.fromColor(Cesium.Color.fromCssColorString('#3c3e43'))}}));}
-  ROADLINES=lines;
-  for(let i=0;i<inst.length;i+=150)scene.primitives.add(new Cesium.Primitive({geometryInstances:inst.slice(i,i+150),appearance:new Cesium.PerInstanceColorAppearance({flat:true,translucent:false,closed:false}),asynchronous:false}));}
+  for(const ln of lines){ln.h0=ln.pts.map(([x,z])=>cwt(x,z)+dlt(x,z));ln.h=ln.h0.slice();ln.ok=new Uint8Array(ln.pts.length);buildLine(ln);}
+  ROADLINES=lines;}
 window.CESIUMGAME={rel,sync,viewer,ready:null};
 window.CESIUMGAME.ready=(async()=>{
   const SP={x:297.7,z:287.2};
