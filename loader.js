@@ -71,10 +71,10 @@ let refT=0;
 window.__rd={get lines(){return ROADLINES},get ts(){return tileset},n:0,err:null};
 function refineRoads(cx,cz){try{refineRoads0(cx,cz);}catch(e){__rd.err=String(e&&e.stack||e);}}
 function refineRoads0(cx,cz){if(!ROADLINES||!tileset)return;__rd.n++;const now=performance.now();refT=now;
-  const cand=[];for(const ln of ROADLINES){for(let i=0;i<ln.pts.length;i++){if(ln.ok[i])continue;const d=Math.hypot(ln.pts[i][0]-cx,ln.pts[i][1]-cz)+ln.tr[i]*25;if(d<160)cand.push([d,ln,i]);}}
+  const cand=[];for(const ln of ROADLINES){for(let i=0;i<ln.pts.length;i++){const d=Math.hypot(ln.pts[i][0]-cx,ln.pts[i][1]-cz);if(d>150)continue;const age=now-ln.t[i];if(age<(d<50?2500:6000))continue;cand.push([d-age/400,ln,i]);}}
   if(!cand.length)return;cand.sort((a,b)=>a[0]-b[0]);const touched=new Set();for(const p of ROADPRIMS)p.show=false;
-  for(const [d,ln,i] of cand.slice(0,10)){const [lo,la]=toLL(ln.pts[i][0],ln.pts[i][1]);let h;try{h=scene.sampleHeight(Cesium.Cartographic.fromDegrees(lo,la));}catch(e){__rd.err=String(e);}
-    ln.tr[i]++;(__rd.s=__rd.s||[]).push([Math.round(ln.pts[i][0]),Math.round(ln.pts[i][1]),h,ln.h0[i],ROADPRIMS.size,[...ROADPRIMS].every(p=>!p.show)]);if(__rd.s.length>40)__rd.s.shift();let acc=false;if(h!==undefined&&isFinite(h)){const ref=ln.h0[i];if(h>ref-5&&h<ref+6){ln.h[i]=h;touched.add(ln);acc=true;}}if(acc||ln.tr[i]>=6)ln.ok[i]=1;}
+  for(const [d,ln,i] of cand.slice(0,12)){const [lo,la]=toLL(ln.pts[i][0],ln.pts[i][1]);let h;try{h=scene.sampleHeight(Cesium.Cartographic.fromDegrees(lo,la));}catch(e){__rd.err=String(e);}
+    ln.tr[i]++;(__rd.s=__rd.s||[]).push([Math.round(ln.pts[i][0]),Math.round(ln.pts[i][1]),h,ln.h0[i],ROADPRIMS.size,[...ROADPRIMS].every(p=>!p.show)]);if(__rd.s.length>40)__rd.s.shift();let acc=false;if(h!==undefined&&isFinite(h)){const ref=ln.h0[i];if(h>ref-5&&h<ref+6){ln.h[i]=h;touched.add(ln);acc=true;}}ln.t[i]=now;if(acc)ln.ok[i]=1;}
   for(const p of ROADPRIMS)p.show=true;
   let k=0;for(const ln of touched){if(k++<3)buildLine(ln);else ln.dirty=1;}
   for(const ln of ROADLINES)if(ln.dirty&&k++<3){ln.dirty=0;buildLine(ln);}}
@@ -91,7 +91,7 @@ async function buildRoads(SP){
   try{const res=await Promise.race([scene.sampleHeightMostDetailed(CP.map(([x,z])=>{const [lo,la]=toLL(x,z);return Cesium.Cartographic.fromDegrees(lo,la);})),new Promise(r=>setTimeout(()=>r(null),20000))]);
     if(res)res.forEach((c,i)=>{if(c&&isFinite(c.height)){const ref=cwt(CP[i][0],CP[i][1]);const dv=c.height-ref;if(dv>-15&&dv<30)corr.push([CP[i][0],CP[i][1],dv]);}});}catch(e){console.warn(e);}
   const dlt=(x,z)=>{if(!corr.length)return delta;let s=0,w=0;for(const [cx,cz,dv] of corr){const q=1/((cx-x)**2+(cz-z)**2+400);s+=dv*q;w+=q;}return s/w;};
-  for(const ln of lines){ln.h0=ln.pts.map(([x,z])=>cwt(x,z)+dlt(x,z));ln.h=ln.h0.slice();ln.ok=new Uint8Array(ln.pts.length);ln.tr=new Uint8Array(ln.pts.length);buildLine(ln);}
+  for(const ln of lines){ln.h0=ln.pts.map(([x,z])=>cwt(x,z)+dlt(x,z));ln.h=ln.h0.slice();ln.ok=new Uint8Array(ln.pts.length);ln.tr=new Uint8Array(ln.pts.length);ln.t=new Float64Array(ln.pts.length);buildLine(ln);}
   ROADLINES=lines;}
 window.CESIUMGAME={rel,sync,viewer,ready:null};
 window.CESIUMGAME.ready=(async()=>{
