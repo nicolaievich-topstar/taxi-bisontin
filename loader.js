@@ -67,7 +67,9 @@ function buildLine(ln){const n=ln.pts.length;const hm=lineHeights(ln);
   scene.primitives.add(prim);ROADPRIMS.add(prim);
   if(ln.prim){scene.primitives.remove(ln.prim);ROADPRIMS.delete(ln.prim);}ln.prim=prim;}
 let refT=0;
-function refineRoads(cx,cz){if(!ROADLINES||!tileset)return;const now=performance.now();if(now-refT<250)return;refT=now;
+window.__rd={get lines(){return ROADLINES},get ts(){return tileset},n:0,err:null};
+function refineRoads(cx,cz){try{refineRoads0(cx,cz);}catch(e){__rd.err=String(e&&e.stack||e);}}
+function refineRoads0(cx,cz){if(!ROADLINES||!tileset)return;__rd.n++;const now=performance.now();if(now-refT<250)return;refT=now;
   const cand=[];for(const ln of ROADLINES){for(let i=0;i<ln.pts.length;i++){if(ln.ok[i])continue;const d=Math.hypot(ln.pts[i][0]-cx,ln.pts[i][1]-cz);if(d<130)cand.push([d,ln,i]);}}
   if(!cand.length)return;cand.sort((a,b)=>a[0]-b[0]);const touched=new Set();const ex=[...ROADPRIMS];
   for(const [d,ln,i] of cand.slice(0,10)){const [lo,la]=toLL(ln.pts[i][0],ln.pts[i][1]);let h;try{h=scene.sampleHeight(Cesium.Cartographic.fromDegrees(lo,la),ex);}catch(e){}
