@@ -1,0 +1,31 @@
+[
+ {
+  "id": "terrier",
+  "bi": 1212,
+  "wall": 6,
+  "flip": true,
+  "url": "https://upload.wikimedia.org/wikipedia/commons/0/0a/Besan%C3%A7on%2C_h%C3%B4tel_Terrier.jpg",
+  "ref": 1400,
+  "quad": [
+   [
+    0,
+    358
+   ],
+   [
+    1362,
+    86
+   ],
+   [
+    1362,
+    1396
+   ],
+   [
+    0,
+    1333
+   ]
+  ],
+  "W": 1400,
+  "H": 1150,
+  "credit": "JGS25, CC BY-SA 4.0, Wikimedia Commons"
+ }
+]
